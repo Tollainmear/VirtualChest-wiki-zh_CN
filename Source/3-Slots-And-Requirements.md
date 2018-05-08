@@ -26,7 +26,7 @@ Slot0 {
 }
 ```
 
-The configuration for slots contains 5 options: `Item`, `Requirements`, `PrimaryAction`, `SecondaryAction`, and `IgnoredPermissions` (not shown above).
+The configuration for slots contains 7 options: `Item`, `Requirements`, `PrimaryAction`, `SecondaryAction`, `PrimaryShiftAction` (not shown above), `SecondaryShiftAction` (not shown above), and `IgnoredPermissions` (not shown above).
 
 ## `Item`
 
@@ -96,6 +96,25 @@ Whether the item shows its enchantments or not, could be either `true` or `false
 ### The `HideAttributes` attribute
 
 Whether the item (usually tools) shows its attributes or not, could be either `true` or `false`.
+
+### The `RepresentedPlayer` attribute
+
+What the represented player is if the target item is a skull head. The value of this attribute should be an object (also called a section). A `UUID` is required, while a `Name` could be optional. For example:
+
+```hocon
+RepresentedPlayer = {
+  UUID = "%player_uuid%"
+}
+```
+
+It will show the player's own skull head. Here is another example for a specific player:
+
+```hocon
+RepresentedPlayer = {
+  UUID = "61699b2e-d327-4a01-9f1e-0ea8c3f06bc6"
+  Name = "Dinnerbone"
+}
+```
 
 ## `Requirements`
 
@@ -190,14 +209,44 @@ PrimaryAction {
   Command = "cost-item: 9; cost: -8"
   HandheldItem {
     ItemType = "minecraft:wheat"
-    Count = 9
     UnsafeDamage = 0
+    Count = 9
   }
   KeepInventoryOpen = true
 }
 ```
 
 It rules that the player must hold at least 9 wheats to click the item in order to trigger actions. The `UnsafeDamage` option is not required, and if it is absent, it means that any meta matches. This feature is often used to make chest shop menus, in which a player can hold something for selling them.
+
+The value of `PrimaryAction` could also be a list rather than an object. If it is a list, elements of the list will be used to match items in order by identifing their `HandheldItem`s. For example:
+
+```hocon
+PrimaryAction = [{
+  Command = "cost-item: 9; cost: -8"
+  HandheldItem {
+    ItemType = "minecraft:wheat"
+    UnsafeDamage = 0
+    Count = 9
+  }
+  KeepInventoryOpen = true
+}, {
+  Command = "cost-item: 1; cost: -8"
+  HandheldItem {
+    ItemType = "minecraft:hay_block"
+    UnsafeDamage = 0
+    Count = 1
+  }
+  KeepInventoryOpen = true
+}]
+```
+
+Not only wheats but also hay bales could be identified if players click the slot with any of two items held in the mouse cursor.
+
+For more information about `HandheldItem`s, please refer to [Identifing Items](#identifing-items).
+
+## `PrimaryShiftAction` and `SecondaryShiftAction`
+
+`PrimaryShiftAction` and `SecondaryShiftAction` are similar to `PrimaryAction` and `SecondaryAction` respectively, but they will be trigger when target players click the item with their shift key pressed. If not set, `PrimaryShiftAction` will behave the same as `PrimaryAction`, and correspondingly, `SecondaryShiftAction` will behave the same as `SecondaryAction` .
 
 ## `IgnoredPermissions`
 
@@ -224,6 +273,152 @@ Slot0 {
 ```
 
 All the provided permissions will be set to `true` when actions begins to be executed, and they will be set to their original value as soon as all the actions are executed. Thanks to the Sponge's Permission Context system I am able to implement the temporary permission system which is safe enough.
+
+# Identifing Items
+
+`HandheldItem` is the key of a field which should be defined in `PrimaryAction`, `SecondaryAction`, `PrimaryShiftAction`, or `SecondaryShiftAction`. `HandheldItem`s are used for identifing items and perform different actions for different items. In other words, `HandheldItem`s are treated as item filters in VirtualChest.
+
+VirtualChest could recognize six types of fields in `HandheldItem`s, which are shown as follows.
+
+### The `ItemType` field
+
+As the name implies, `ItemType` is used for identifing item types.
+
+Here is an example for identifing diamonds:
+
+```hocon
+HandheldItem {
+  ItemType = "minecraft:diamond"
+}
+```
+
+### The `Count` field
+
+`Count` is used to identify items containing **at least** a given amount. The default value will be 1 if the `Count` field is not set.
+
+Here is an example for identifing at least 60 diamonds:
+
+```hocon
+HandheldItem {
+  Count = 60
+  ItemType = "minecraft:diamond"
+}
+```
+
+An itemstack containing 61, 62, 63, or 64 diamonds will also be identified.
+
+### The `UnsafeDamage` field
+
+`UnsafeDamage` is used for identifing the item damage. If it is not set, the corresponding `HandheldItem` will match any possible item damages (as a wildcard matcher).
+
+Here is an example for identifing charcoals:
+
+```hocon
+HandheldItem {
+  UnsafeDamage = 1
+  ItemType = "minecraft:coal"
+}
+```
+
+Here is an example for identifing naturally generated coals:
+
+```hocon
+HandheldItem {
+  UnsafeDamage = 1
+  ItemType = "minecraft:coal"
+}
+```
+
+If the `UnsafeDamage` field is not set, both coals and charcoals will be identified:
+
+```hocon
+HandheldItem {
+  ItemType = "minecraft:coal"
+}
+```
+
+### The `UnsafeData` field
+
+`UnsafeData` is used for matching nbt tags of items. The detection logic for matching nbt tags is same as [what `/testfor` does](https://minecraft.gamepedia.com/Commands#testfor).
+
+### The `SearchInventory` field
+
+The default of `SearchInventory` field is `false`. If it is set to true, not only the players' cursors but also their inventories will be searched to match the `HandheldItem` field. Since the player's inventory is large enough, the value of the`Count` field can even be set to an integer greater than the max stack size (usually it is 64).
+
+If there are multiple actions withe multiple `HandheldItem`s and the player's cursor is empty, the order in the list will determine the priority. Both wheats and hay bales will be still used as the following example:
+
+```hocon
+PrimaryAction = [{
+  Command = "cost-item: 9; cost: -8"
+  HandheldItem {
+    SearchInventory = true
+    ItemType = "minecraft:wheat"
+    UnsafeDamage = 0
+    Count = 9
+  }
+  KeepInventoryOpen = true
+}, {
+  Command = "cost-item: 1; cost: -8"
+  HandheldItem {
+    SearchInventory = true
+    ItemType = "minecraft:hay_block"
+    UnsafeDamage = 0
+    Count = 1
+  }
+  KeepInventoryOpen = true
+}]
+```
+
+If the player clicks the slot with nothing in the hand, the wheats in the inventory will be searched first, and the next item to be searched will be hay bales if the amount of wheat is not enough (less than 9).
+
+However, the item held in the mouse cursor will be always the highest priority. If a slot is clicked with a hay bale held in hand, the second item will be directly selected, although there may be plenty of wheats in the player's inventory.
+
+### The `RepetitionUpperLimit` Field
+
+Is it possible to sell all the matched items in the inventory? Yes, it is possible. `RepetitionUpperLimit` allows you to search the inventory and the mouse cursor repeatly and perform the action as many times as possible, until the upper bound set by yourself. The default value of `RepetitionUpperLimit` is 0, which means that there will not be any repetition. If you set the value to a positive integer, the situation will be different. Here we still use wheat as the example:
+
+```hocon
+PrimaryAction {
+  Command = "cost-item: 9; cost: -8"
+  HandheldItem {
+    RepetitionUpperLimit = 2
+    ItemType = "minecraft:wheat"
+    UnsafeDamage = 0
+    Count = 9
+  }
+  KeepInventoryOpen = true
+}
+```
+
+* If you have less than 9 wheats, nothing will happen.
+* If you have no less than 9 but less than 18 wheats, the action will be executed once. You used 9 wheats in exchange for 8 default currency units.
+* If you have no less than 18 but less than 27 wheats, the action will be executed twice (repeated once). You used 18 wheats in exchange for 16 default currency units.
+* If you have no less than 27 but less than 36 wheats, the action will be executed three times (repeated twice). You used 27 wheats in exchange for 24 default currency units.
+* If you have no less than 36 wheats, the action should have been executed four times (repeated three times), but the `RepetitionUpperLimit` limits the maximum number of repetitions, so it would only be repeated twice (executed three times), deduct 27 wheats, and give you 24 default currency units.
+
+It seems tempting to set the value of `RepetitionUpperLimit` to a very large value, but a large number of repeatitions will cause the server to perform too many operations on the same tick, so I actually do not recommend this. The following example:
+
+```hocon
+HandheldItem {
+  RepetitionUpperLimit = 9
+  ItemType = "minecraft:wheat"
+  UnsafeDamage = 0
+  Count = 64
+}
+```
+
+is better than this one:
+
+```hocon
+HandheldItem {
+  RepetitionUpperLimit = 64
+  ItemType = "minecraft:wheat"
+  UnsafeDamage = 0
+  Count = 9
+}
+```
+
+All you also need to do is just the adjustion of the action to be executed (such as the money to be given and the item to be deducted).
 
 # Available Action Prefixes
 
